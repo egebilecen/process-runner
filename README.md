@@ -13,3 +13,6 @@ args = ""
 hide = true
 ```
 Setting the `hide` option to `true` will make the program to spawn the process with the `CREATE_NO_WINDOW` flag.
+
+---
+**Currently, only Windows is supported.**
