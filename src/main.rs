@@ -5,7 +5,7 @@ use std::{
     error::Error,
     fs,
     path::Path,
-    process::{Child, Command},
+    process::{Child, Command, ExitCode},
     sync::Mutex,
 };
 
@@ -13,7 +13,10 @@ use std::{
 use std::os::windows::process::CommandExt;
 
 #[cfg(not(debug_assertions))]
-use auto_launch::AutoLaunchBuilder;
+use special_folder::SpecialFolder;
+
+#[cfg(not(debug_assertions))]
+use mslnk::ShellLink;
 
 #[cfg(not(debug_assertions))]
 use std::env;
@@ -31,6 +34,23 @@ args = ""
 hide = true
 "#;
 static CHILD_LIST_LOCK: Mutex<Vec<Child>> = Mutex::new(vec![]);
+
+#[cfg(not(debug_assertions))]
+fn add_to_startup(display_name: &str, path: &str) -> Result<(), Box<dyn Error>> {
+    let startup_path = SpecialFolder::Startup.get().unwrap_or("".into());
+
+    if startup_path.as_os_str().is_empty() {
+        return Err("Couldn't get the startup path.".into());
+    }
+
+    let shortcut = ShellLink::new(path)?;
+
+    if let Err(err) = shortcut.create_lnk(startup_path.join(format!("{}.lnk", display_name))) {
+        Err(err.into())
+    } else {
+        Ok(())
+    }
+}
 
 fn spawn_process(path: &str, args: &str, is_hidden: bool) -> Result<(), Box<dyn Error>> {
     let working_dir = if let Some(val) = Path::new(path).parent() {
@@ -59,7 +79,7 @@ fn spawn_process(path: &str, args: &str, is_hidden: bool) -> Result<(), Box<dyn 
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn _main() -> Result<(), Box<dyn Error>> {
     simple_log::new(
         LogConfigBuilder::builder()
             .path("logs.txt")
@@ -76,20 +96,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let bin_path = bin_path.to_str().unwrap_or("");
 
         if !bin_path.is_empty() {
-            let args: [&str; 0] = [];
-            let auto = AutoLaunchBuilder::new()
-                .set_app_name(env!("CARGO_PKG_NAME"))
-                .set_app_path(bin_path)
-                .set_args(&args)
-                .set_use_launch_agent(true)
-                .build()?;
-
-            if let Err(err) = auto.enable() {
-                error!(
-                    "Error occured while setting the file as auto launch: {}",
-                    err
-                );
-            }
+            add_to_startup("Process Runner", bin_path)?;
         } else {
             error!("Binary path is empty. Couldn't set the file as auto launch.");
         }
@@ -156,4 +163,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     info!("All child processes are exited. Terminating the program...");
     Ok(())
+}
+
+fn main() -> ExitCode {
+    if let Err(err) = _main() {
+        error!("{}", err.to_string());
+        return 1.into();
+    }
+
+    0.into()
 }
